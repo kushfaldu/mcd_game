@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>McFloat — Burger Balloon</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@800;900&display=swap');
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; touch-action:none; user-select:none; }
+html,body { width:100%; height:100%; background:#111; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+
+#shell {
+  position:relative;
+  width:360px; height:620px;
+  border-radius:18px; overflow:hidden;
+  border:3px solid #FFC72C;
+  box-shadow:0 0 50px rgba(255,199,44,0.3), 0 12px 40px #000c;
+}
+
+canvas { display:block; }
+
+#hud {
+  position:absolute; top:0; left:0; right:0;
+  display:flex; justify-content:space-between; align-items:center;
+  padding:8px 12px; pointer-events:none; z-index:10;
+}
+.hpill {
+  background:rgba(0,0,0,0.5); border:1.5px solid #FFC72C;
+  border-radius:20px; padding:2px 12px;
+  color:#FFC72C; font-family:'Fredoka One',cursive; font-size:1rem; line-height:1.6;
+}
+.hpill small { display:block; color:#999; font-size:0.48rem; letter-spacing:1px; text-transform:uppercase; font-family:'Nunito',sans-serif; line-height:1; }
+#pauseBtn {
+  background:rgba(0,0,0,0.5); border:1.5px solid #FFC72C;
+  border-radius:8px; padding:3px 10px; color:#FFC72C;
+  font-family:'Fredoka One',cursive; font-size:1rem; cursor:pointer; pointer-events:all;
+}
+
+.screen {
+  position:absolute; inset:0; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:8px;
+  z-index:20; background:rgba(255,248,231,0.97);
+  font-family:'Fredoka One',cursive;
+}
+.screen.off { display:none; }
+.s-title { font-size:2.6rem; color:#DA291C; text-shadow:3px 4px 0 rgba(0,0,0,0.12); text-align:center; line-height:1.1; }
+.s-sub { font-family:'Nunito',sans-serif; font-weight:800; font-size:0.83rem; color:#555; text-align:center; max-width:270px; line-height:1.7; }
+.mc-btn {
+  background:#DA291C; color:#FFC72C; font-family:'Fredoka One',cursive;
+  font-size:1.15rem; border:none; border-radius:50px; padding:11px 40px;
+  cursor:pointer; box-shadow:0 5px 0 #8a1000; letter-spacing:0.5px;
+  margin-top:4px;
+}
+.mc-btn.gold { background:#FFC72C; color:#1a0d00; box-shadow:0 5px 0 #a07000; }
+.score-big { font-size:3rem; color:#DA291C; line-height:1; }
+.lbl-small { font-family:'Nunito',sans-serif; font-size:0.7rem; color:#aaa; letter-spacing:1px; text-transform:uppercase; }
+.wait-tag { font-family:'Nunito',sans-serif; font-size:0.62rem; color:#DA291C; letter-spacing:1px; text-transform:uppercase; opacity:0.65; margin-top:4px; }
+
+#tapLeft, #tapRight {
+  position:absolute; top:0; bottom:0; width:50%; z-index:8; cursor:pointer;
+}
+#tapLeft { left:0; } #tapRight { right:0; }
+
+#pwr-bar {
+  position:absolute; bottom:10px; left:50%; transform:translateX(-50%);
+  width:120px; height:6px; border-radius:4px;
+  background:rgba(0,0,0,0.25); overflow:hidden;
+  pointer-events:none; z-index:10; display:none;
+}
+#pwr-fill { height:100%; border-radius:4px; }
+
+#combo-pop {
+  position:absolute; top:38%; left:50%; transform:translate(-50%,-50%);
+  font-family:'Fredoka One',cursive; font-size:1.5rem; color:#DA291C;
+  text-shadow:1px 1px 0 rgba(0,0,0,0.1); pointer-events:none; z-index:15;
+  opacity:0; transition:opacity 0.15s; white-space:nowrap;
+}
+</style>
+</head>
+<body>
+<div id="shell">
+  <canvas id="c" width="360" height="620"></canvas>
+
+  <div id="hud">
+    <div class="hpill"><small>Score</small><span id="scoreEl">0</span></div>
+    <button id="pauseBtn">II</button>
+    <div class="hpill"><small>Best</small><span id="bestEl">0</span></div>
+  </div>
+
+  <div id="pwr-bar"><div id="pwr-fill"></div></div>
+  <div id="combo-pop"></div>
+
+  <div id="tapLeft"></div>
+  <div id="tapRight"></div>
+
+  <!-- START -->
+  <div class="screen" id="startScreen">
+    <div style="font-size:4rem;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.15))">&#x1F354;</div>
+    <div class="s-title">McFloat!</div>
+    <div class="s-sub">
+      Burger balloon rises on its own!<br>
+      <b>Hold LEFT</b> or <b>RIGHT</b> side to move.<br>
+      Dodge the red spike platforms! <br><br>
+      Collect <b>M coins</b> for points.<br>
+      Grab <b>Magnet</b> or <b>Rainbow</b> powerups!
+    </div>
+    <button class="mc-btn" id="startBtn">Let's Float! </button>
+    <div class="wait-tag">Your order is being prepared...</div>
+  </div>
+
+  <!-- GAME OVER -->
+  <div class="screen off" id="overScreen">
+    <div style="font-size:4rem">&#x1F4A5;</div>
+    <div class="s-title">Splat!</div>
+    <div class="score-big" id="finalScore">0</div>
+    <div class="lbl-small">YOUR SCORE</div>
+    <div id="overMsg" style="font-family:'Nunito',sans-serif;font-size:0.82rem;color:#888;margin:4px 0 8px;">Keep floating!</div>
+    <button class="mc-btn gold" id="retryBtn">Try Again</button>
+    <div class="wait-tag" style="margin-top:8px;">Still cooking your order...</div>
+  </div>
+
+  <!-- PAUSE -->
+  <div class="screen off" id="pauseScreen">
+    <div style="font-size:3.5rem">II</div>
+    <div class="s-title" style="font-size:2rem;">Paused</div>
+    <button class="mc-btn" id="resumeBtn">Resume</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+const W = 360, H = 620;
+
+// Constants
+const PLAT_H       = 12;
+const SPIKE_H      = 20;
+const SPIKE_W      = 12;
+const BASE_SPEED   = 1.8;
+const BALLOON_R    = 26;
+const PLAT_GAP     = 220;  // min vertical distance between platforms
+const BUBBLE_R     = 10;
+const PWR_DUR      = 360;
+
+// State
+let gameState = 'start';
+let score = 0, best = 0, frameN = 0;
+let moveDir = 0;
+let popTimer = 0;
+let bx, by, bvx;
+let platforms = [], bubbles = [], powerups = [], particles = [];
+let magnetOn = false, magnetT = 0;
+let rainbowOn = false, rainbowT = 0;
+let speed = BASE_SPEED;
+
+// ─── INIT ───
+function initGame() {
+  score = 0; frameN = 0; moveDir = 0; popTimer = 0;
+  bx = W / 2; by = H * 0.62; bvx = 0;
+  platforms = []; bubbles = []; powerups = []; particles = [];
+  magnetOn = false; magnetT = 0;
+  rainbowOn = false; rainbowT = 0;
+  speed = BASE_SPEED;
+
+  // Seed platforms above the visible area
+  for (let i = 0; i < 4; i++) {
+    addPlatform(-40 - i * PLAT_GAP);
+  }
+  // Seed bubbles spread above
+  for (let i = 0; i < 10; i++) {
+    addBubble(-20 - i * 65);
+  }
+  document.getElementById('scoreEl').textContent = 0;
+  hidePwrBar();
+}
+
+// ─── SPAWN ───
+function addPlatform(y) {
+  const minW = 85, maxW = W * 0.58;
+  const pw = minW + Math.random() * (maxW - minW);
+  const side = Math.random() < 0.5 ? 0 : 1;
+  const x = side === 0 ? 0 : W - pw;
+  platforms.push({ x, y, w: pw, scored: false });
+}
+
+function addBubble(y) {
+  bubbles.push({
+    x: 18 + Math.random() * (W - 36),
+    y: y,
+    r: BUBBLE_R,
+    hit: false
+  });
+}
+
+function addPowerup(y) {
+  const type = Math.random() < 0.55 ? 'magnet' : 'rainbow';
+  powerups.push({ x: 30 + Math.random() * (W - 60), y, type, hit: false });
+}
+
+// ─── DRAW BACKGROUND ───
+function drawBackground() {
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0,   '#b8dcf8');
+  sky.addColorStop(0.5, '#fff8e7');
+  sky.addColorStop(1,   '#ffe8a0');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle M watermark
+  ctx.save();
+  ctx.globalAlpha = 0.045;
+  ctx.fillStyle = '#DA291C';
+  ctx.font = 'bold 280px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('M', W / 2, H / 2);
+  ctx.restore();
+}
+
+// ─── DRAW PLATFORM ───
+function drawPlatform(p) {
+  const { x, y, w } = p;
+  // Bar body
+  ctx.fillStyle = '#DA291C';
+  ctx.fillRect(x, y, w, PLAT_H);
+  // Gold stripe
+  ctx.fillStyle = '#FFC72C';
+  ctx.fillRect(x + 2, y + PLAT_H - 5, w - 4, 4);
+
+  // Spikes pointing DOWN
+  const nSpikes = Math.floor(w / SPIKE_W);
+  for (let i = 0; i < nSpikes; i++) {
+    const sx = x + i * SPIKE_W;
+    ctx.fillStyle = '#C8200E';
+    ctx.beginPath();
+    ctx.moveTo(sx,              y + PLAT_H);
+    ctx.lineTo(sx + SPIKE_W/2,  y + PLAT_H + SPIKE_H);
+    ctx.lineTo(sx + SPIKE_W,    y + PLAT_H);
+    ctx.closePath();
+    ctx.fill();
+    // gold tip
+    ctx.fillStyle = '#FFC72C';
+    ctx.beginPath();
+    ctx.moveTo(sx + SPIKE_W/2 - 2, y + PLAT_H + SPIKE_H - 5);
+    ctx.lineTo(sx + SPIKE_W/2,     y + PLAT_H + SPIKE_H);
+    ctx.lineTo(sx + SPIKE_W/2 + 2, y + PLAT_H + SPIKE_H - 5);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+// ─── DRAW BUBBLE ───
+function drawBubble(b) {
+  if (b.hit) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(218,41,28,0.5)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,199,44,0.2)';
+  ctx.fill();
+  ctx.fillStyle = '#DA291C';
+  ctx.font = 'bold 10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('M', b.x, b.y);
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  ctx.arc(b.x - b.r * 0.3, b.y - b.r * 0.3, b.r * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─── DRAW POWERUP ───
+function drawPowerup(p) {
+  if (p.hit) return;
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  if (p.type === 'magnet') {
+    // Draw a U-shaped magnet
+    ctx.strokeStyle = '#c00';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(0, 2, 9, Math.PI, 0, false);
+    ctx.stroke();
+    ctx.strokeStyle = '#DA291C';
+    ctx.beginPath(); ctx.moveTo(-9, 2); ctx.lineTo(-9, 10); ctx.stroke();
+    ctx.strokeStyle = '#0044cc';
+    ctx.beginPath(); ctx.moveTo(9, 2);  ctx.lineTo(9, 10);  ctx.stroke();
+    ctx.fillStyle = '#DA291C';
+    ctx.fillRect(-11, 8, 5, 5);
+    ctx.fillStyle = '#0044cc';
+    ctx.fillRect(6, 8, 5, 5);
+  } else {
+    // Rainbow orb
+    const h = (frameN * 3) % 360;
+    const rg = ctx.createRadialGradient(-3, -3, 2, 0, 0, 13);
+    rg.addColorStop(0, 'hsl(' + h + ',90%,65%)');
+    rg.addColorStop(0.5, 'hsl(' + ((h+80)%360) + ',90%,55%)');
+    rg.addColorStop(1, 'hsl(' + ((h+160)%360) + ',90%,45%)');
+    ctx.fillStyle = rg;
+    ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath(); ctx.arc(-4, -4, 4, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ─── DRAW BALLOON ───
+function drawBalloon(cx, cy) {
+  ctx.save();
+  const bob = Math.sin(frameN * 0.075) * 1.8;
+  cy += bob;
+  const r = BALLOON_R;
+
+  // Ropes
+  ctx.strokeStyle = '#7a3a10'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx-10, cy+22); ctx.lineTo(cx-6, cy+36); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx+10, cy+22); ctx.lineTo(cx+6,  cy+36); ctx.stroke();
+
+  // Basket (fry box)
+  ctx.fillStyle = '#DA291C';
+  ctx.beginPath(); ctx.roundRect(cx-12, cy+36, 24, 15, 3); ctx.fill();
+  ctx.fillStyle = '#FFC72C';
+  ctx.font = 'bold 9px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('M', cx, cy+43.5);
+  ctx.strokeStyle = '#FFC72C'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  [[-5,36],[-1,36],[4,36]].forEach(([fx, fy]) => {
+    ctx.beginPath(); ctx.moveTo(cx+fx, cy+fy); ctx.lineTo(cx+fx, cy+fy-10); ctx.stroke();
+  });
+
+  // Bottom bun
+  const bbg = ctx.createLinearGradient(cx-r, cy+14, cx+r, cy+14);
+  bbg.addColorStop(0, '#a06000'); bbg.addColorStop(0.5, '#c87810'); bbg.addColorStop(1, '#a06000');
+  ctx.fillStyle = bbg;
+  ctx.beginPath(); ctx.ellipse(cx, cy+14, r, r*0.3, 0, 0, Math.PI*2); ctx.fill();
+
+  // Patty
+  ctx.fillStyle = '#5a2e12';
+  ctx.beginPath(); ctx.ellipse(cx, cy+6, r*0.88, r*0.22, 0, 0, Math.PI*2); ctx.fill();
+
+  // Cheese
+  ctx.fillStyle = '#FFB300';
+  ctx.beginPath(); ctx.ellipse(cx+1, cy, r*0.9, r*0.19, 0, 0, Math.PI*2); ctx.fill();
+
+  // Lettuce frills
+  ctx.fillStyle = '#43A047';
+  for (let i = 0; i < 8; i++) {
+    const a = (i/8) * Math.PI*2;
+    ctx.beginPath();
+    ctx.ellipse(cx + Math.cos(a)*r*0.68, cy-6 + Math.sin(a)*r*0.2, r*0.21, r*0.1, a, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Top bun dome
+  if (rainbowOn) {
+    const h = (frameN * 3) % 360;
+    ctx.fillStyle = 'hsl(' + h + ',80%,55%)';
+  } else {
+    const dg = ctx.createRadialGradient(cx-8, cy-22, 3, cx, cy-10, r*1.05);
+    dg.addColorStop(0, '#F5C060');
+    dg.addColorStop(0.55, '#D4860F');
+    dg.addColorStop(1, '#9a5000');
+    ctx.fillStyle = dg;
+  }
+  ctx.beginPath(); ctx.ellipse(cx, cy-10, r, r*0.76, 0, 0, Math.PI*2); ctx.fill();
+
+  // Sesame seeds
+  ctx.fillStyle = 'rgba(255,248,200,0.9)';
+  [[-11,-25],[5,-29],[15,-20],[-3,-17],[11,-13],[-14,-15]].forEach(([sx, sy]) => {
+    ctx.save(); ctx.translate(cx+sx, cy+sy); ctx.rotate(0.4);
+    ctx.beginPath(); ctx.ellipse(0, 0, 3.5, 2, 0, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  });
+
+  // Shine
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath(); ctx.ellipse(cx-9, cy-23, r*0.3, r*0.13, -0.4, 0, Math.PI*2); ctx.fill();
+
+  // Rainbow glow ring
+  if (rainbowOn) {
+    const h = (frameN * 5) % 360;
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = 'hsl(' + h + ',90%,55%)';
+    ctx.lineWidth = 7;
+    ctx.beginPath(); ctx.ellipse(cx, cy-10, r+9, r*0.76+7, 0, 0, Math.PI*2); ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+// ─── PARTICLES ───
+function burst(x, y, good) {
+  for (let i = 0; i < 12; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = 1.5 + Math.random() * 4;
+    particles.push({
+      x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s - 1.5,
+      life: 1, decay: 0.035 + Math.random()*0.03,
+      col: good ? '#FFC72C' : '#DA291C',
+      sz: 2.5 + Math.random() * 4.5
+    });
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.col;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.sz, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─── COLLISION ───
+function platformHit(p) {
+  // Check balloon circle vs spike rectangle
+  const sTop = p.y + PLAT_H;
+  const sBot = p.y + PLAT_H + SPIKE_H;
+  const nearX = Math.max(p.x, Math.min(bx, p.x + p.w));
+  const nearY = Math.max(sTop, Math.min(by, sBot));
+  const dx = bx - nearX, dy = by - nearY;
+  if (dx*dx + dy*dy < (BALLOON_R-5)*(BALLOON_R-5)) return true;
+  // Also check bar top
+  const nearY2 = Math.max(p.y, Math.min(by, p.y + PLAT_H));
+  const dy2 = by - nearY2, dx2 = bx - nearX;
+  if (dx2*dx2 + dy2*dy2 < (BALLOON_R-7)*(BALLOON_R-7)) return true;
+  return false;
+}
+
+// ─── POWERUP BAR ───
+function showPwrBar(col, frac) {
+  const bar = document.getElementById('pwr-bar');
+  bar.style.display = 'block';
+  document.getElementById('pwr-fill').style.background = col;
+  document.getElementById('pwr-fill').style.width = (frac*100) + '%';
+}
+function hidePwrBar() {
+  document.getElementById('pwr-bar').style.display = 'none';
+}
+
+function popText(txt) {
+  const el = document.getElementById('combo-pop');
+  el.textContent = txt;
+  el.style.opacity = '1';
+  popTimer = 80;
+}
+
+// ─── MAIN LOOP ───
+function loop() {
+  requestAnimationFrame(loop);
+  frameN++;
+
+  drawBackground();
+  if (gameState !== 'play') return;
+
+  // Speed ramp
+  speed = BASE_SPEED + Math.min(score * 0.014, 2.0);
+
+  // Horizontal movement
+  bvx += moveDir * 0.75;
+  bvx *= 0.80;
+  bx  += bvx;
+  bx   = Math.max(BALLOON_R, Math.min(W - BALLOON_R, bx));
+
+  // Scroll all objects downward
+  for (const p of platforms) p.y += speed;
+  for (const b of bubbles)   b.y += speed;
+  for (const p of powerups)  p.y += speed;
+
+  // Remove objects scrolled off bottom
+  platforms = platforms.filter(p => p.y < H + 60);
+  bubbles   = bubbles.filter(b => !b.hit && b.y < H + 30);
+  powerups  = powerups.filter(p => !p.hit && p.y < H + 30);
+
+  // Spawn new platform when top is clear
+  const topPlatY = platforms.length ? Math.min(...platforms.map(p => p.y)) : H;
+  if (topPlatY > PLAT_GAP * 0.6) {
+    addPlatform(-35 - Math.random()*25);
+  }
+
+  // Keep ~6 bubbles on screen
+  const visibleBubbles = bubbles.filter(b => !b.hit).length;
+  if (visibleBubbles < 5) {
+    for (let i = 0; i < 3; i++) addBubble(-20 - i * 80);
+  }
+
+  // Powerup: random chance when none visible
+  if (score >= 5 && powerups.length === 0 && Math.random() < 0.003) {
+    addPowerup(-30);
+  }
+
+  // Powerup timers
+  if (magnetOn) {
+    magnetT--;
+    if (magnetT <= 0) { magnetOn = false; hidePwrBar(); }
+    else showPwrBar('#FF6600', magnetT / PWR_DUR);
+  }
+  if (rainbowOn) {
+    rainbowT--;
+    if (rainbowT <= 0) { rainbowOn = false; hidePwrBar(); }
+    else {
+      const h = (frameN * 3) % 360;
+      showPwrBar('hsl(' + h + ',80%,55%)', rainbowT / PWR_DUR);
+    }
+  }
+
+  // Magnet
+  if (magnetOn) {
+    for (const b of bubbles) {
+      if (b.hit) continue;
+      const dx = bx - b.x, dy = by - b.y;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d < 180 && d > 1) { b.x += (dx/d)*5; b.y += (dy/d)*5; }
+    }
+  }
+
+  // Collect bubbles
+  for (const b of bubbles) {
+    if (b.hit) continue;
+    const dx = bx - b.x, dy = by - b.y;
+    if (dx*dx + dy*dy < (BALLOON_R + b.r - 4)*(BALLOON_R + b.r - 4)) {
+      b.hit = true; score++;
+      burst(b.x, b.y, true);
+      document.getElementById('scoreEl').textContent = score;
+      if (score % 10 === 0) popText(score + ' pts!');
+    }
+  }
+
+  // Collect powerups
+  for (const p of powerups) {
+    if (p.hit) continue;
+    const dx = bx - p.x, dy = by - p.y;
+    if (dx*dx + dy*dy < (BALLOON_R + 16)*(BALLOON_R + 16)) {
+      p.hit = true;
+      burst(p.x, p.y, true);
+      if (p.type === 'magnet') { magnetOn = true; magnetT = PWR_DUR; popText('Magnet ON!'); }
+      else                     { rainbowOn = true; rainbowT = PWR_DUR; popText('Invincible!'); }
+    }
+  }
+
+  // Spike collision
+  if (!rainbowOn) {
+    for (const p of platforms) {
+      if (platformHit(p)) { burst(bx, by, false); return endGame(); }
+    }
+    if (bx <= BALLOON_R || bx >= W - BALLOON_R) {
+      burst(bx, by, false); return endGame();
+    }
+  }
+
+  // Score: passed a platform
+  for (const p of platforms) {
+    if (!p.scored && p.y > by + 30) {
+      p.scored = true; score++;
+      document.getElementById('scoreEl').textContent = score;
+    }
+  }
+
+  // Update particles
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy; p.vy += 0.13; p.life -= p.decay;
+    return p.life > 0;
+  });
+
+  // Popup timer
+  if (popTimer > 0) {
+    popTimer--;
+    if (popTimer === 0) document.getElementById('combo-pop').style.opacity = '0';
+  }
+
+  // Draw everything
+  for (const p of platforms) drawPlatform(p);
+  for (const b of bubbles)   drawBubble(b);
+  for (const p of powerups)  drawPowerup(p);
+  drawParticles();
+  drawBalloon(bx, by);
+}
+
+// ─── GAME FLOW ───
+function startGame() {
+  initGame();
+  document.getElementById('startScreen').classList.add('off');
+  document.getElementById('overScreen').classList.add('off');
+  document.getElementById('pauseScreen').classList.add('off');
+  gameState = 'play';
+}
+
+function endGame() {
+  gameState = 'over';
+  if (score > best) { best = score; document.getElementById('bestEl').textContent = best; }
+  document.getElementById('finalScore').textContent = score;
+  const msgs = ['Keep floating!','Not bad!','Golden Arches!','Ronald approves!'];
+  const mi = score < 10 ? 0 : score < 30 ? 1 : score < 70 ? 2 : 3;
+  document.getElementById('overMsg').textContent = msgs[mi];
+  document.getElementById('overScreen').classList.remove('off');
+}
+
+function togglePause() {
+  if (gameState === 'play') {
+    gameState = 'pause';
+    document.getElementById('pauseScreen').classList.remove('off');
+  } else if (gameState === 'pause') {
+    gameState = 'play';
+    document.getElementById('pauseScreen').classList.add('off');
+  }
+}
+
+// ─── INPUT ───
+const tapL = document.getElementById('tapLeft');
+const tapR = document.getElementById('tapRight');
+tapL.addEventListener('pointerdown', e => { e.preventDefault(); if (gameState==='play') moveDir=-1; });
+tapR.addEventListener('pointerdown', e => { e.preventDefault(); if (gameState==='play') moveDir= 1; });
+tapL.addEventListener('pointerup',   () => { if (moveDir===-1) moveDir=0; });
+tapR.addEventListener('pointerup',   () => { if (moveDir=== 1) moveDir=0; });
+tapL.addEventListener('pointerleave',() => { if (moveDir===-1) moveDir=0; });
+tapR.addEventListener('pointerleave',() => { if (moveDir=== 1) moveDir=0; });
+
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowLeft'  || e.key==='a') { e.preventDefault(); moveDir=-1; }
+  if (e.key==='ArrowRight' || e.key==='d') { e.preventDefault(); moveDir= 1; }
+  if (e.key==='p' || e.key==='Escape') togglePause();
+});
+document.addEventListener('keyup', e => {
+  if ((e.key==='ArrowLeft'  || e.key==='a') && moveDir===-1) moveDir=0;
+  if ((e.key==='ArrowRight' || e.key==='d') && moveDir=== 1) moveDir=0;
+});
+
+document.getElementById('startBtn').addEventListener('click',  e => { e.stopPropagation(); startGame(); });
+document.getElementById('retryBtn').addEventListener('click',  e => { e.stopPropagation(); startGame(); });
+document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); togglePause(); });
+document.getElementById('pauseBtn').addEventListener('click',  e => { e.stopPropagation(); togglePause(); });
+
+loop();
+</script>
+</body>
+</html>
